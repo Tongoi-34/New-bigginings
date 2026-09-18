@@ -1,0 +1,8 @@
+{
+  "name": "uza-uza",
+  "description": "Mobile distribution & route sales tracker for small trade distributors: inventory replenishment, customer shop orders, daily auto-reconciliation, high-demand analytics, and monthly cumulative profit tracking.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
