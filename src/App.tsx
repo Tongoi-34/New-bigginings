@@ -7,6 +7,7 @@ import { ReconciliationView } from './components/ReconciliationView';
 import { CumulativeMonthView } from './components/CumulativeMonthView';
 import { NewSaleModal } from './components/NewSaleModal';
 import { ReplenishModal } from './components/ReplenishModal';
+import { UnloadModal } from './components/UnloadModal';
 import { OnboardCustomerModal } from './components/OnboardCustomerModal';
 import { EditProductModal } from './components/EditProductModal';
 import { CollectCreditModal } from './components/CollectCreditModal';
@@ -40,6 +41,9 @@ function MainApp() {
 
   const [isReplenishOpen, setIsReplenishOpen] = useState(false);
   const [replenishPreselectedProduct, setReplenishPreselectedProduct] = useState<Product | undefined>(undefined);
+
+  const [isUnloadOpen, setIsUnloadOpen] = useState(false);
+  const [unloadPreselectedProduct, setUnloadPreselectedProduct] = useState<Product | undefined>(undefined);
 
   const [isOnboardOpen, setIsOnboardOpen] = useState(false);
 
@@ -146,6 +150,10 @@ function MainApp() {
               onOpenReplenish={(prod) => {
                 setReplenishPreselectedProduct(prod);
                 setIsReplenishOpen(true);
+              }}
+              onOpenUnload={(prod) => {
+                setUnloadPreselectedProduct(prod);
+                setIsUnloadOpen(true);
               }}
               onOpenEditProduct={(prod) => {
                 setEditProductTarget(prod);
@@ -275,6 +283,12 @@ function MainApp() {
         isOpen={isReplenishOpen}
         onClose={() => setIsReplenishOpen(false)}
         preselectedProduct={replenishPreselectedProduct}
+      />
+
+      <UnloadModal
+        isOpen={isUnloadOpen}
+        onClose={() => setIsUnloadOpen(false)}
+        preselectedProduct={unloadPreselectedProduct}
       />
 
       <OnboardCustomerModal

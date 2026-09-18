@@ -73,6 +73,27 @@ export interface ReplenishmentRecord {
   invoiceOrNote?: string;
 }
 
+export interface UnloadItem {
+  productId: string;
+  productName: string;
+  unit: ProductUnit;
+  unitPackSize: string;
+  quantity: number;
+  buyingPrice: number;
+  totalValuation: number;
+}
+
+export interface UnloadRecord {
+  id: string;
+  date: string; // YYYY-MM-DD
+  time: string; // HH:mm
+  items: UnloadItem[];
+  totalUnits: number;
+  totalValuation: number;
+  destinationOrReason: string; // e.g. "Factory Depot Return", "Damaged Stock Offload", "End of Shift"
+  invoiceOrNote?: string;
+}
+
 export interface DailyReconciliation {
   date: string; // YYYY-MM-DD
   isClosed: boolean;

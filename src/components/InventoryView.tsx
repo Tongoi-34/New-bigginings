@@ -17,22 +17,40 @@ import {
   Sparkles,
   DollarSign,
   Layers,
+  Eraser,
+  Trash2,
+  PackageMinus,
+  ArrowDownToLine,
+  Warehouse,
 } from 'lucide-react';
 
 interface InventoryViewProps {
   onOpenReplenish: (product?: Product) => void;
+  onOpenUnload: (product?: Product) => void;
   onOpenEditProduct: (product?: Product) => void;
 }
 
 export const InventoryView: React.FC<InventoryViewProps> = ({
   onOpenReplenish,
+  onOpenUnload,
   onOpenEditProduct,
 }) => {
-  const { products, orders, replenishments, currencySymbol, selectedDate } = useDistributor();
+  const {
+    products,
+    orders,
+    replenishments,
+    unloadRecords,
+    currencySymbol,
+    selectedDate,
+    clearProductStock,
+    clearAllStock,
+  } = useDistributor();
 
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedTab, setSelectedTab] = useState<'catalog' | 'replenish_log'>('catalog');
+  const [selectedTab, setSelectedTab] = useState<'catalog' | 'replenish_log' | 'unload_log'>('catalog');
   const [filterCategory, setFilterCategory] = useState('all');
+  const [showClearAllModal, setShowClearAllModal] = useState(false);
+  const [clearingProduct, setClearingProduct] = useState<Product | null>(null);
 
   const currentMonth = selectedDate.slice(0, 7);
   const demandStats = calculateProductDemand(products, orders, currentMonth);
@@ -76,7 +94,31 @@ export const InventoryView: React.FC<InventoryViewProps> = ({
           </div>
         </div>
 
-        <div className="flex items-center gap-2 self-start sm:self-auto">
+        <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+          {totalStockUnits > 0 && (
+            <button
+              type="button"
+              onClick={() => onOpenUnload()}
+              className="px-3 py-2 bg-neutral-950 hover:bg-amber-500/15 border border-neutral-800 hover:border-amber-500/40 text-amber-400 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+              title="Type items and quantities to unload from vehicle"
+            >
+              <PackageMinus className="w-3.5 h-3.5" />
+              <span>Unload Van</span>
+            </button>
+          )}
+
+          {totalStockUnits > 0 && (
+            <button
+              type="button"
+              onClick={() => setShowClearAllModal(true)}
+              className="px-3 py-2 bg-neutral-950 hover:bg-rose-950/40 border border-neutral-800 hover:border-rose-800/60 text-neutral-400 hover:text-rose-300 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+              title="Reset all van stock on hand to zero"
+            >
+              <Eraser className="w-3.5 h-3.5 text-rose-400" />
+              <span>Clear All Stock</span>
+            </button>
+          )}
+
           <button
             type="button"
             onClick={() => onOpenEditProduct()}
@@ -137,31 +179,44 @@ export const InventoryView: React.FC<InventoryViewProps> = ({
         </div>
       </div>
 
-      {/* Sub-Tabs: Products Catalog vs Factory Replenishment Log */}
-      <div className="flex items-center gap-2 border-b border-neutral-800 pb-2">
+      {/* Sub-Tabs: Products Catalog vs Factory Replenishment Log vs Van Offloads */}
+      <div className="flex items-center gap-2 border-b border-neutral-800 pb-2 overflow-x-auto no-scrollbar">
         <button
           type="button"
           onClick={() => setSelectedTab('catalog')}
-          className={`px-3 py-1.5 text-xs font-semibold rounded-xl transition-all ${
+          className={`px-3 py-1.5 text-xs font-semibold rounded-xl whitespace-nowrap transition-all cursor-pointer ${
             selectedTab === 'catalog'
               ? 'bg-amber-500 text-neutral-950 font-bold'
               : 'text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800'
           }`}
         >
-          Product Catalog & Prices ({products.length})
+          Product Catalog ({products.length})
         </button>
 
         <button
           type="button"
           onClick={() => setSelectedTab('replenish_log')}
-          className={`px-3 py-1.5 text-xs font-semibold rounded-xl transition-all flex items-center gap-1.5 ${
+          className={`px-3 py-1.5 text-xs font-semibold rounded-xl whitespace-nowrap transition-all flex items-center gap-1.5 cursor-pointer ${
             selectedTab === 'replenish_log'
               ? 'bg-amber-500 text-neutral-950 font-bold'
               : 'text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800'
           }`}
         >
           <History className="w-3.5 h-3.5" />
-          <span>Factory Replenish History ({replenishments.length})</span>
+          <span>Factory Loads ({replenishments.length})</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setSelectedTab('unload_log')}
+          className={`px-3 py-1.5 text-xs font-semibold rounded-xl whitespace-nowrap transition-all flex items-center gap-1.5 cursor-pointer ${
+            selectedTab === 'unload_log'
+              ? 'bg-amber-500 text-neutral-950 font-bold'
+              : 'text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800'
+          }`}
+        >
+          <PackageMinus className="w-3.5 h-3.5" />
+          <span>Van Offloads ({unloadRecords.length})</span>
         </button>
       </div>
 
@@ -287,31 +342,59 @@ export const InventoryView: React.FC<InventoryViewProps> = ({
                   </div>
 
                   {/* Action Buttons */}
-                  <div className="grid grid-cols-2 gap-2 mt-3 pt-2 border-t border-neutral-800/80">
+                  <div
+                    className={`grid ${
+                      product.stockOnHand > 0 ? 'grid-cols-2 sm:grid-cols-4' : 'grid-cols-2'
+                    } gap-1.5 mt-3 pt-2 border-t border-neutral-800/80`}
+                  >
                     <button
                       type="button"
                       onClick={() => onOpenReplenish(product)}
-                      className="py-1.5 px-3 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                      className="py-1.5 px-2 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-xl text-xs font-bold flex items-center justify-center gap-1 transition-colors cursor-pointer"
                     >
                       <Truck className="w-3.5 h-3.5" />
-                      <span>Reload Van</span>
+                      <span>Reload</span>
                     </button>
+
+                    {product.stockOnHand > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => onOpenUnload(product)}
+                        className="py-1.5 px-2 bg-neutral-950 hover:bg-amber-500/15 text-neutral-300 hover:text-amber-300 border border-neutral-800 hover:border-amber-500/40 rounded-xl text-xs font-semibold flex items-center justify-center gap-1 transition-colors cursor-pointer"
+                        title="Unload specific quantity from van"
+                      >
+                        <PackageMinus className="w-3.5 h-3.5 text-amber-400" />
+                        <span>Unload</span>
+                      </button>
+                    )}
 
                     <button
                       type="button"
                       onClick={() => onOpenEditProduct(product)}
-                      className="py-1.5 px-3 bg-neutral-950 hover:bg-neutral-800 text-neutral-300 border border-neutral-800 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                      className="py-1.5 px-2 bg-neutral-950 hover:bg-neutral-800 text-neutral-300 border border-neutral-800 rounded-xl text-xs font-semibold flex items-center justify-center gap-1 transition-colors cursor-pointer"
                     >
                       <Tag className="w-3.5 h-3.5 text-amber-400" />
-                      <span>Edit Price / SKU</span>
+                      <span>Edit SKU</span>
                     </button>
+
+                    {product.stockOnHand > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setClearingProduct(product)}
+                        className="py-1.5 px-2 bg-neutral-950 hover:bg-rose-950/30 text-neutral-400 hover:text-rose-400 border border-neutral-800 hover:border-rose-900/50 rounded-xl text-xs font-semibold flex items-center justify-center gap-1 transition-colors cursor-pointer"
+                        title="Reset this item's van stock to 0"
+                      >
+                        <Eraser className="w-3.5 h-3.5" />
+                        <span>Clear (0)</span>
+                      </button>
+                    )}
                   </div>
                 </div>
               );
             })}
           </div>
         </div>
-      ) : (
+      ) : selectedTab === 'replenish_log' ? (
         /* Factory Replenishment History Log */
         <div className="space-y-3">
           <div className="flex items-center justify-between">
@@ -354,6 +437,208 @@ export const InventoryView: React.FC<InventoryViewProps> = ({
                 </div>
               </div>
             ))}
+          </div>
+        </div>
+      ) : (
+        /* Van Offload & Return History Log */
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-sm font-bold text-neutral-100 flex items-center gap-2">
+                <PackageMinus className="w-4 h-4 text-amber-400" />
+                Van Offload & Return History
+              </h3>
+              <p className="text-xs text-neutral-400">
+                Log of items typed and unloaded back to warehouse or factory
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => onOpenUnload()}
+              className="px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-neutral-950 font-bold rounded-xl text-xs flex items-center gap-1.5 transition-all shadow-md shadow-amber-500/20 cursor-pointer"
+            >
+              <PackageMinus className="w-3.5 h-3.5" />
+              <span>Type Items to Unload</span>
+            </button>
+          </div>
+
+          {unloadRecords.length === 0 ? (
+            <div className="p-8 text-center border border-dashed border-neutral-800 rounded-2xl bg-neutral-950/50 space-y-3">
+              <div className="w-12 h-12 rounded-2xl bg-neutral-900 border border-neutral-800 flex items-center justify-center mx-auto text-neutral-500">
+                <Warehouse className="w-6 h-6" />
+              </div>
+              <div className="space-y-1">
+                <h4 className="text-sm font-bold text-neutral-200">No Unload Records Yet</h4>
+                <p className="text-xs text-neutral-400 max-w-sm mx-auto">
+                  When you return goods to the depot or offload unsold stock at the end of the shift, your typed unload logs will appear here.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => onOpenUnload()}
+                className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-neutral-950 font-bold rounded-xl text-xs inline-flex items-center gap-2 transition-colors cursor-pointer"
+              >
+                <PackageMinus className="w-4 h-4" />
+                <span>Type Items to Unload Now</span>
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {unloadRecords.map((rec) => (
+                <div
+                  key={rec.id}
+                  className="p-4 bg-neutral-950 rounded-2xl border border-neutral-800 space-y-3 text-xs"
+                >
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2.5 border-b border-neutral-800/80">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-bold text-neutral-100 text-sm">
+                          {rec.destinationOrReason}
+                        </span>
+                        <span className="px-2 py-0.5 rounded bg-amber-500/15 border border-amber-500/30 text-amber-300 font-bold text-[11px]">
+                          -{rec.totalUnits} units offloaded
+                        </span>
+                      </div>
+                      <div className="text-neutral-400 text-[11px] flex items-center gap-2">
+                        <span>{rec.date} at {rec.time}</span>
+                        {rec.invoiceOrNote && (
+                          <>
+                            <span>•</span>
+                            <span className="text-neutral-300 font-medium">
+                              Ref: {rec.invoiceOrNote}
+                            </span>
+                          </>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="text-left sm:text-right">
+                      <div className="text-neutral-400 text-[11px]">Inventory Valuation Removed:</div>
+                      <div className="text-sm font-black text-neutral-200">
+                        {formatCurrency(rec.totalValuation, currencySymbol)}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* List of individual items unloaded */}
+                  <div className="space-y-1.5 pt-0.5">
+                    <span className="text-[11px] font-semibold text-neutral-400 uppercase tracking-wider">
+                      Offloaded Items Breakdown:
+                    </span>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                      {rec.items.map((item, idx) => (
+                        <div
+                          key={idx}
+                          className="p-2 bg-neutral-900/80 rounded-xl border border-neutral-800/80 flex items-center justify-between text-xs"
+                        >
+                          <div className="min-w-0 pr-2">
+                            <div className="font-semibold text-neutral-200 truncate">
+                              {item.productName}
+                            </div>
+                            <div className="text-[10px] text-neutral-400">
+                              {item.unitPackSize}
+                            </div>
+                          </div>
+                          <div className="text-right shrink-0">
+                            <span className="font-bold text-amber-400">
+                              {item.quantity} {item.unit}s
+                            </span>
+                            <div className="text-[10px] text-neutral-400">
+                              {formatCurrency(item.totalValuation, currencySymbol)}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+      {/* MODAL: Clear All Stock Confirmation */}
+      {showClearAllModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-xs p-4">
+          <div className="w-full max-w-md bg-neutral-900 border border-neutral-800 rounded-2xl p-5 shadow-2xl space-y-4">
+            <div className="flex items-start gap-3">
+              <div className="p-2.5 rounded-xl bg-rose-500/10 text-rose-400 shrink-0">
+                <Eraser className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-neutral-100">Clear All Van Stock?</h3>
+                <p className="text-xs text-neutral-400 mt-1 leading-relaxed">
+                  This will reset the stock-on-hand count for all <strong className="text-neutral-200">{products.length} products</strong> in your van to <strong className="text-amber-400">0 units</strong> ({totalStockUnits} total units cleared).
+                </p>
+                <div className="mt-2.5 p-2.5 bg-neutral-950 rounded-xl border border-neutral-800 text-[11px] text-neutral-400">
+                  💡 Use this when offloading unsold stock back to the factory depot or when performing a clean physical cycle count. Product catalog and pricing will not be deleted.
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-neutral-800">
+              <button
+                type="button"
+                onClick={() => setShowClearAllModal(false)}
+                className="px-4 py-2 bg-neutral-800 hover:bg-neutral-700 text-neutral-300 font-semibold rounded-xl text-xs transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  clearAllStock();
+                  setShowClearAllModal(false);
+                }}
+                className="px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white font-bold rounded-xl text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
+              >
+                <Eraser className="w-3.5 h-3.5" />
+                <span>Yes, Clear All to 0</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: Clear Single Product Stock Confirmation */}
+      {clearingProduct && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-xs p-4">
+          <div className="w-full max-w-md bg-neutral-900 border border-neutral-800 rounded-2xl p-5 shadow-2xl space-y-4">
+            <div className="flex items-start gap-3">
+              <div className="p-2.5 rounded-xl bg-amber-500/10 text-amber-400 shrink-0">
+                <Eraser className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-neutral-100">Clear Stock for this SKU?</h3>
+                <p className="text-xs text-neutral-300 font-medium mt-1">
+                  {clearingProduct.name} ({clearingProduct.unitPackSize})
+                </p>
+                <p className="text-xs text-neutral-400 mt-1">
+                  Current van stock: <strong className="text-neutral-100">{clearingProduct.stockOnHand} {clearingProduct.unit}s</strong> ({formatCurrency(clearingProduct.stockOnHand * clearingProduct.sellingPrice, currencySymbol)} value).
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-neutral-800">
+              <button
+                type="button"
+                onClick={() => setClearingProduct(null)}
+                className="px-4 py-2 bg-neutral-800 hover:bg-neutral-700 text-neutral-300 font-semibold rounded-xl text-xs transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  clearProductStock(clearingProduct.id);
+                  setClearingProduct(null);
+                }}
+                className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-neutral-950 font-bold rounded-xl text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
+              >
+                <Eraser className="w-3.5 h-3.5" />
+                <span>Clear to 0 Units</span>
+              </button>
+            </div>
           </div>
         </div>
       )}

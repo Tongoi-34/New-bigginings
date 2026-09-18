@@ -17,6 +17,7 @@ import {
   CheckCircle,
   ExternalLink,
   MessageSquare,
+  Trash2,
 } from 'lucide-react';
 
 interface CustomersViewProps {
@@ -30,11 +31,12 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
   onOpenNewSaleForCustomer,
   onOpenCollectCredit,
 }) => {
-  const { customers, orders, currencySymbol } = useDistributor();
+  const { customers, orders, currencySymbol, deleteCustomer } = useDistributor();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedEstate, setSelectedEstate] = useState('all');
   const [selectedCustomerDetail, setSelectedCustomerDetail] = useState<Customer | null>(null);
+  const [customerToRemove, setCustomerToRemove] = useState<Customer | null>(null);
 
   const estates = ['all', ...Array.from(new Set(customers.map((c) => c.estate)))];
 
@@ -196,17 +198,28 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
                     </div>
                   </div>
 
-                  <span
-                    className={`px-2.5 py-1 rounded-xl text-xs font-bold ${
-                      hasDebt
-                        ? isNearCreditLimit
-                          ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
-                          : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
-                        : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                    }`}
-                  >
-                    {hasDebt ? `Owes ${formatCurrency(cust.outstandingCredit, currencySymbol)}` : 'Zero Debt'}
-                  </span>
+                  <div className="flex items-center gap-1.5">
+                    <span
+                      className={`px-2.5 py-1 rounded-xl text-xs font-bold ${
+                        hasDebt
+                          ? isNearCreditLimit
+                            ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
+                            : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+                          : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                      }`}
+                    >
+                      {hasDebt ? `Owes ${formatCurrency(cust.outstandingCredit, currencySymbol)}` : 'Zero Debt'}
+                    </span>
+
+                    <button
+                      type="button"
+                      onClick={() => setCustomerToRemove(cust)}
+                      className="p-1.5 text-neutral-500 hover:text-rose-400 hover:bg-rose-950/40 rounded-xl transition-colors cursor-pointer"
+                      title={`Remove ${cust.shopName}`}
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
                 </div>
 
                 {cust.landmark && (
@@ -386,7 +399,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
               </div>
             </div>
 
-            <div className="p-4 border-t border-neutral-800 bg-neutral-950 flex items-center gap-2">
+            <div className="p-4 border-t border-neutral-800 bg-neutral-950 flex flex-wrap items-center gap-2">
               <button
                 type="button"
                 onClick={() => {
@@ -394,7 +407,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
                   setSelectedCustomerDetail(null);
                   onOpenNewSaleForCustomer(cId);
                 }}
-                className="flex-1 py-2.5 bg-amber-500 hover:bg-amber-400 text-neutral-950 font-bold rounded-xl text-xs flex items-center justify-center gap-2"
+                className="flex-1 py-2.5 bg-amber-500 hover:bg-amber-400 text-neutral-950 font-bold rounded-xl text-xs flex items-center justify-center gap-2 cursor-pointer"
               >
                 <ShoppingBag className="w-4 h-4" />
                 <span>New Sale for this Shop</span>
@@ -408,11 +421,91 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
                     setSelectedCustomerDetail(null);
                     onOpenCollectCredit(c);
                   }}
-                  className="py-2.5 px-4 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 border border-emerald-500/30 font-bold rounded-xl text-xs"
+                  className="py-2.5 px-4 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 border border-emerald-500/30 font-bold rounded-xl text-xs cursor-pointer"
                 >
                   Collect Debt
                 </button>
               )}
+
+              <button
+                type="button"
+                onClick={() => {
+                  const c = selectedCustomerDetail;
+                  setSelectedCustomerDetail(null);
+                  setCustomerToRemove(c);
+                }}
+                className="py-2.5 px-3 bg-neutral-900 hover:bg-rose-950/40 text-neutral-400 hover:text-rose-400 border border-neutral-800 hover:border-rose-900/60 font-semibold rounded-xl text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
+                title="Remove shop from directory"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>Remove Shop</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* CONFIRM REMOVE SHOP MODAL */}
+      {customerToRemove && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-xs p-4">
+          <div className="w-full max-w-md bg-neutral-900 border border-neutral-800 rounded-2xl p-5 shadow-2xl space-y-4">
+            <div className="flex items-start gap-3">
+              <div className="p-2.5 rounded-xl bg-rose-500/10 text-rose-400 shrink-0">
+                <Trash2 className="w-6 h-6" />
+              </div>
+              <div className="space-y-1">
+                <h3 className="text-base font-bold text-neutral-100">Remove Shop Account?</h3>
+                <p className="text-sm font-bold text-neutral-200">
+                  {customerToRemove.shopName}
+                </p>
+                <p className="text-xs text-neutral-400">
+                  Owner: <span className="text-neutral-300 font-medium">{customerToRemove.ownerName}</span> • Estate: <span className="text-amber-400 font-semibold">{customerToRemove.estate}</span>
+                </p>
+              </div>
+            </div>
+
+            {customerToRemove.outstandingCredit > 0 ? (
+              <div className="p-3 bg-rose-950/40 border border-rose-800/60 rounded-xl space-y-1">
+                <div className="flex items-center gap-1.5 text-xs font-bold text-rose-300">
+                  <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
+                  <span>Unpaid Credit Balance: {formatCurrency(customerToRemove.outstandingCredit, currencySymbol)}</span>
+                </div>
+                <p className="text-[11px] text-rose-200/80 leading-relaxed">
+                  ⚠️ This shop currently has an outstanding debt. Removing this shop will delete it from your active shops directory and accounts receivable ledger.
+                </p>
+              </div>
+            ) : (
+              <p className="text-xs text-neutral-400 leading-relaxed">
+                This shop has zero outstanding debt. Removing them will take them off your active estate delivery directory.
+              </p>
+            )}
+
+            <div className="p-2.5 bg-neutral-950 rounded-xl border border-neutral-800 text-xs text-neutral-400 flex items-center justify-between">
+              <span>Lifetime Purchases:</span>
+              <strong className="text-neutral-200">
+                {formatCurrency(customerToRemove.totalSpent, currencySymbol)} ({customerToRemove.totalOrdersCount} orders)
+              </strong>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-neutral-800">
+              <button
+                type="button"
+                onClick={() => setCustomerToRemove(null)}
+                className="px-4 py-2 bg-neutral-800 hover:bg-neutral-700 text-neutral-300 font-semibold rounded-xl text-xs transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  deleteCustomer(customerToRemove.id);
+                  setCustomerToRemove(null);
+                }}
+                className="px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white font-bold rounded-xl text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Yes, Remove Shop</span>
+              </button>
             </div>
           </div>
         </div>

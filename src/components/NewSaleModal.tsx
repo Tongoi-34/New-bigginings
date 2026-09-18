@@ -2,7 +2,21 @@ import React, { useState } from 'react';
 import { useDistributor } from '../context/DistributorContext';
 import { Customer, OrderItem, PaymentMethod } from '../types';
 import { formatCurrency } from '../utils/analytics';
-import { X, Plus, Minus, ShoppingBag, Store, CreditCard, Banknote, Smartphone, CheckCircle, AlertTriangle } from 'lucide-react';
+import {
+  X,
+  Plus,
+  Minus,
+  ShoppingBag,
+  Store,
+  CreditCard,
+  Banknote,
+  Smartphone,
+  CheckCircle,
+  AlertTriangle,
+  Search,
+  SlidersHorizontal,
+  RotateCcw,
+} from 'lucide-react';
 
 interface NewSaleModalProps {
   isOpen: boolean;
@@ -23,6 +37,8 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
 
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>(preselectedCustomerId || '');
   const [quantities, setQuantities] = useState<Record<string, number>>({});
+  const [productSearch, setProductSearch] = useState<string>('');
+  const [onlyInStock, setOnlyInStock] = useState<boolean>(true);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('mpesa');
   const [mpesaRef, setMpesaRef] = useState<string>('');
   const [splitCashAmount, setSplitCashAmount] = useState<string>('');
@@ -38,18 +54,55 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
 
   const selectedCustomer = customers.find((c) => c.id === selectedCustomerId);
 
-  const handleQtyChange = (productId: string, delta: number) => {
+  // Typeable quantity handler
+  const handleQuantityInput = (productId: string, rawValue: string) => {
+    setErrorMsg('');
     const prod = products.find((p) => p.id === productId);
     if (!prod) return;
 
+    if (rawValue === '') {
+      setQuantities((prev) => {
+        const copy = { ...prev };
+        delete copy[productId];
+        return copy;
+      });
+      return;
+    }
+
+    const parsed = parseInt(rawValue, 10);
+    if (isNaN(parsed) || parsed < 0) return;
+
+    if (parsed > prod.stockOnHand) {
+      setErrorMsg(
+        `Cannot sell ${parsed} ${prod.unit}s of ${prod.name}. Van only has ${prod.stockOnHand} on hand!`
+      );
+      setTimeout(() => setErrorMsg(''), 4000);
+      setQuantities((prev) => ({
+        ...prev,
+        [productId]: prod.stockOnHand,
+      }));
+      return;
+    }
+
+    setQuantities((prev) => ({
+      ...prev,
+      [productId]: parsed,
+    }));
+  };
+
+  const handleStepQty = (productId: string, delta: number) => {
+    setErrorMsg('');
+    const prod = products.find((p) => p.id === productId);
+    if (!prod) return;
+
+    const current = quantities[productId] || 0;
+    const next = Math.max(0, Math.min(prod.stockOnHand, current + delta));
+
     setQuantities((prev) => {
-      const current = prev[productId] || 0;
-      const next = Math.max(0, current + delta);
-      // Validate against stockOnHand
-      if (next > prod.stockOnHand) {
-        setErrorMsg(`Only ${prod.stockOnHand} ${prod.unit}s available in the van!`);
-        setTimeout(() => setErrorMsg(''), 3000);
-        return prev;
+      if (next === 0) {
+        const copy = { ...prev };
+        delete copy[productId];
+        return copy;
       }
       return {
         ...prev,
@@ -57,6 +110,34 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
       };
     });
   };
+
+  const handleSetMax = (productId: string) => {
+    setErrorMsg('');
+    const prod = products.find((p) => p.id === productId);
+    if (!prod || prod.stockOnHand === 0) return;
+
+    setQuantities((prev) => ({
+      ...prev,
+      [productId]: prod.stockOnHand,
+    }));
+  };
+
+  const handleResetQuantities = () => {
+    setErrorMsg('');
+    setQuantities({});
+  };
+
+  // Filtered products list
+  const filteredProducts = products.filter((prod) => {
+    const matchesSearch =
+      prod.name.toLowerCase().includes(productSearch.toLowerCase()) ||
+      prod.category.toLowerCase().includes(productSearch.toLowerCase()) ||
+      prod.unitPackSize.toLowerCase().includes(productSearch.toLowerCase());
+
+    if (!matchesSearch) return false;
+    if (onlyInStock) return prod.stockOnHand > 0;
+    return true;
+  });
 
   const selectedItems: OrderItem[] = [];
   let subtotal = 0;
@@ -241,76 +322,196 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
           </div>
 
           {/* Product Items Selector */}
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <label className="text-xs font-semibold uppercase tracking-wider text-neutral-400">
-                Van Stock Items to Unload
+          <div className="space-y-2.5">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-semibold uppercase tracking-wider text-neutral-300 flex items-center gap-1.5">
+                <span>Van Stock Items to Sell</span>
+                <span className="text-[11px] text-amber-400 font-normal lowercase">
+                  (type quantity or name)
+                </span>
               </label>
-              <span className="text-xs text-neutral-500">Tap + to add</span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setOnlyInStock(!onlyInStock)}
+                  className={`text-[11px] font-semibold px-2 py-0.5 rounded-lg border transition-colors cursor-pointer flex items-center gap-1 ${
+                    onlyInStock
+                      ? 'bg-amber-500/15 border-amber-500/30 text-amber-300'
+                      : 'bg-neutral-800 border-neutral-700 text-neutral-400'
+                  }`}
+                >
+                  <SlidersHorizontal className="w-3 h-3" />
+                  <span>In Stock Only</span>
+                </button>
+
+                {Object.keys(quantities).length > 0 && (
+                  <button
+                    type="button"
+                    onClick={handleResetQuantities}
+                    className="text-[11px] font-semibold text-neutral-400 hover:text-rose-400 flex items-center gap-0.5 cursor-pointer"
+                  >
+                    <RotateCcw className="w-3 h-3" />
+                    <span>Clear</span>
+                  </button>
+                )}
+              </div>
             </div>
 
-            <div className="space-y-2">
-              {products.map((prod) => {
-                const qty = quantities[prod.id] || 0;
-                const isOutOfStock = prod.stockOnHand === 0;
+            {/* Search Input for Products */}
+            <div className="relative">
+              <Search className="w-4 h-4 text-neutral-400 absolute left-3 top-2.5" />
+              <input
+                type="text"
+                value={productSearch}
+                onChange={(e) => setProductSearch(e.target.value)}
+                placeholder="Type item name to filter (e.g. Cooking Oil, Flour, Milk)..."
+                className="w-full bg-neutral-950 border border-neutral-800 rounded-xl pl-9 pr-8 py-2 text-xs text-neutral-100 placeholder-neutral-500 focus:outline-none focus:border-amber-500 transition-colors"
+              />
+              {productSearch && (
+                <button
+                  type="button"
+                  onClick={() => setProductSearch('')}
+                  className="absolute right-2.5 top-2 text-neutral-400 hover:text-neutral-200 p-0.5 cursor-pointer"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
 
-                return (
-                  <div
-                    key={prod.id}
-                    className={`p-3 rounded-xl border transition-all ${
-                      qty > 0
-                        ? 'bg-amber-500/5 border-amber-500/40'
-                        : isOutOfStock
-                        ? 'bg-neutral-950/40 border-neutral-800/40 opacity-50'
-                        : 'bg-neutral-950 border-neutral-800 hover:border-neutral-700'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2">
-                          <h4 className="text-sm font-semibold text-neutral-100 truncate">{prod.name}</h4>
-                          <span className="text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-neutral-800 text-neutral-400">
-                            {prod.unit}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-2 mt-0.5 text-xs text-neutral-400">
-                          <span className="font-semibold text-neutral-200">
-                            {formatCurrency(prod.sellingPrice, currencySymbol)}
-                          </span>
-                          <span>•</span>
-                          <span className={prod.stockOnHand <= prod.minStockAlert ? 'text-amber-400 font-medium' : 'text-neutral-400'}>
-                            Van Stock: {prod.stockOnHand}
-                          </span>
-                        </div>
-                      </div>
+            {/* Products List with Direct Quantity Typing */}
+            <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+              {filteredProducts.length === 0 ? (
+                <div className="p-5 text-center border border-dashed border-neutral-800 rounded-xl bg-neutral-950/40 text-xs text-neutral-400">
+                  {productSearch ? (
+                    <span>No loaded products match "{productSearch}"</span>
+                  ) : (
+                    <span>No products available in the van stock.</span>
+                  )}
+                  {onlyInStock && (
+                    <button
+                      type="button"
+                      onClick={() => setOnlyInStock(false)}
+                      className="block mx-auto mt-1 text-amber-400 font-semibold hover:underline cursor-pointer"
+                    >
+                      Show out-of-stock items
+                    </button>
+                  )}
+                </div>
+              ) : (
+                filteredProducts.map((prod) => {
+                  const qty = quantities[prod.id] || 0;
+                  const isOutOfStock = prod.stockOnHand === 0;
+                  const isSelected = qty > 0;
+                  const lineTotal = qty * prod.sellingPrice;
+                  const remaining = prod.stockOnHand - qty;
 
-                      {/* Stepper Controls */}
-                      <div className="flex items-center gap-2 shrink-0">
-                        {qty > 0 && (
+                  return (
+                    <div
+                      key={prod.id}
+                      className={`p-3 rounded-xl border transition-all ${
+                        isSelected
+                          ? 'bg-amber-500/5 border-amber-500/40 ring-1 ring-amber-500/20'
+                          : isOutOfStock
+                          ? 'bg-neutral-950/30 border-neutral-800/40 opacity-50'
+                          : 'bg-neutral-950 border-neutral-800 hover:border-neutral-700'
+                      }`}
+                    >
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                        {/* Product Info */}
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <h4 className="text-xs sm:text-sm font-semibold text-neutral-100 truncate">
+                              {prod.name}
+                            </h4>
+                            <span className="text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.2 rounded bg-neutral-800 text-neutral-400 shrink-0">
+                              {prod.unitPackSize || prod.unit}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2 mt-0.5 text-xs text-neutral-400 flex-wrap">
+                            <span className="font-semibold text-neutral-200">
+                              {formatCurrency(prod.sellingPrice, currencySymbol)}
+                            </span>
+                            <span>•</span>
+                            <span
+                              className={
+                                prod.stockOnHand <= prod.minStockAlert
+                                  ? 'text-amber-400 font-medium'
+                                  : 'text-neutral-400'
+                              }
+                            >
+                              Van Stock: {prod.stockOnHand} {prod.unit}s
+                            </span>
+                            {isSelected && (
+                              <>
+                                <span>•</span>
+                                <span className="text-amber-400 font-bold">
+                                  Line: {formatCurrency(lineTotal, currencySymbol)}
+                                </span>
+                                <span>•</span>
+                                <span className="text-neutral-400">
+                                  Left: {remaining}
+                                </span>
+                              </>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Direct Type Input + Quick Steppers + Max */}
+                        <div className="flex items-center gap-1.5 self-end sm:self-center shrink-0">
+                          {/* Decrement */}
                           <button
                             type="button"
-                            onClick={() => handleQtyChange(prod.id, -1)}
-                            className="w-8 h-8 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-neutral-200 flex items-center justify-center transition-colors active:scale-95"
+                            disabled={isOutOfStock || qty === 0}
+                            onClick={() => handleStepQty(prod.id, -1)}
+                            className="w-7 h-7 rounded-lg bg-neutral-800 hover:bg-neutral-700 disabled:opacity-40 disabled:hover:bg-neutral-800 text-neutral-200 flex items-center justify-center text-xs font-bold transition-colors cursor-pointer"
                           >
-                            <Minus className="w-3.5 h-3.5" />
+                            <Minus className="w-3 h-3" />
                           </button>
-                        )}
-                        <span className={`w-8 text-center font-bold text-sm ${qty > 0 ? 'text-amber-400' : 'text-neutral-500'}`}>
-                          {qty}
-                        </span>
-                        <button
-                          type="button"
-                          disabled={isOutOfStock || qty >= prod.stockOnHand}
-                          onClick={() => handleQtyChange(prod.id, 1)}
-                          className="w-8 h-8 rounded-lg bg-amber-500 hover:bg-amber-400 disabled:bg-neutral-800 disabled:text-neutral-600 text-neutral-950 flex items-center justify-center transition-colors active:scale-95 font-bold"
-                        >
-                          <Plus className="w-3.5 h-3.5" />
-                        </button>
+
+                          {/* Direct Type Number Input */}
+                          <div className="relative">
+                            <input
+                              type="number"
+                              inputMode="numeric"
+                              min="0"
+                              max={prod.stockOnHand}
+                              value={qty === 0 ? '' : qty}
+                              disabled={isOutOfStock}
+                              placeholder="0"
+                              onChange={(e) => handleQuantityInput(prod.id, e.target.value)}
+                              className={`w-16 h-7 text-center font-bold text-xs rounded-lg border focus:outline-none focus:ring-1 focus:ring-amber-500 transition-colors ${
+                                isSelected
+                                  ? 'bg-amber-500/20 border-amber-500/50 text-amber-300'
+                                  : 'bg-neutral-900 border-neutral-800 text-neutral-300'
+                              } disabled:opacity-40`}
+                            />
+                          </div>
+
+                          {/* Increment */}
+                          <button
+                            type="button"
+                            disabled={isOutOfStock || qty >= prod.stockOnHand}
+                            onClick={() => handleStepQty(prod.id, 1)}
+                            className="w-7 h-7 rounded-lg bg-neutral-800 hover:bg-neutral-700 disabled:opacity-40 disabled:hover:bg-neutral-800 text-neutral-200 flex items-center justify-center text-xs font-bold transition-colors cursor-pointer"
+                          >
+                            <Plus className="w-3 h-3" />
+                          </button>
+
+                          {/* Max Button */}
+                          <button
+                            type="button"
+                            disabled={isOutOfStock || qty === prod.stockOnHand}
+                            onClick={() => handleSetMax(prod.id)}
+                            className="px-2 h-7 rounded-lg bg-neutral-800 hover:bg-amber-500/20 hover:text-amber-300 hover:border-amber-500/40 border border-neutral-700 disabled:opacity-40 text-[10px] font-bold text-neutral-300 transition-colors cursor-pointer"
+                          >
+                            Max
+                          </button>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                );
-              })}
+                  );
+                })
+              )}
             </div>
           </div>
 

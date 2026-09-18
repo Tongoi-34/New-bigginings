@@ -4,6 +4,8 @@ import {
   Customer,
   Order,
   ReplenishmentRecord,
+  UnloadRecord,
+  UnloadItem,
   DailyReconciliation,
   MonthlyTarget,
   PaymentMethod,
@@ -20,6 +22,7 @@ interface DistributorContextType {
   customers: Customer[];
   orders: Order[];
   replenishments: ReplenishmentRecord[];
+  unloadRecords: UnloadRecord[];
   dailyReconciliations: Record<string, DailyReconciliation>;
   monthlyTarget: MonthlyTarget;
   selectedDate: string;
@@ -30,6 +33,9 @@ interface DistributorContextType {
   // Actions
   addProduct: (product: Omit<Product, 'id'>) => void;
   updateProduct: (product: Product) => void;
+  deleteProduct: (productId: string) => void;
+  clearProductStock: (productId: string) => void;
+  clearAllStock: () => void;
   replenishInventory: (
     factoryName: string,
     productId: string,
@@ -37,8 +43,14 @@ interface DistributorContextType {
     buyingPrice: number,
     invoiceOrNote?: string
   ) => void;
+  unloadInventory: (
+    itemsToUnload: { productId: string; quantity: number }[],
+    destinationOrReason: string,
+    invoiceOrNote?: string
+  ) => void;
   onboardCustomer: (customer: Omit<Customer, 'id' | 'totalOrdersCount' | 'totalSpent' | 'createdAt'>) => string;
   updateCustomer: (customer: Customer) => void;
+  deleteCustomer: (customerId: string) => void;
   collectCustomerCredit: (customerId: string, amount: number, paymentMethod: PaymentMethod) => void;
   createOrder: (order: Omit<Order, 'id' | 'orderNumber' | 'totalCost' | 'totalProfit'>) => Order;
   reconcileDay: (date: string, actualCashCounted: number, notes?: string) => void;
@@ -53,6 +65,7 @@ const STORAGE_KEYS = {
   CUSTOMERS: 'uzauza_customers_v1',
   ORDERS: 'uzauza_orders_v1',
   REPLENISHMENTS: 'uzauza_replenishments_v1',
+  UNLOADS: 'uzauza_unloads_v1',
   RECONCILIATIONS: 'uzauza_reconciliations_v1',
   TARGET: 'uzauza_target_v1',
   CURRENCY: 'uzauza_currency_v1',
@@ -119,6 +132,18 @@ export const DistributorProvider: React.FC<{ children: React.ReactNode }> = ({ c
     return seed.replenishments;
   });
 
+  const [unloadRecords, setUnloadRecords] = useState<UnloadRecord[]>(() => {
+    const saved = localStorage.getItem(STORAGE_KEYS.UNLOADS);
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {
+        console.error('Failed to parse unloads from storage', e);
+      }
+    }
+    return [];
+  });
+
   const [dailyReconciliations, setDailyReconciliations] = useState<Record<string, DailyReconciliation>>(() => {
     const saved = localStorage.getItem(STORAGE_KEYS.RECONCILIATIONS);
     if (saved) {
@@ -161,6 +186,10 @@ export const DistributorProvider: React.FC<{ children: React.ReactNode }> = ({ c
   }, [replenishments]);
 
   useEffect(() => {
+    localStorage.setItem(STORAGE_KEYS.UNLOADS, JSON.stringify(unloadRecords));
+  }, [unloadRecords]);
+
+  useEffect(() => {
     localStorage.setItem(STORAGE_KEYS.RECONCILIATIONS, JSON.stringify(dailyReconciliations));
   }, [dailyReconciliations]);
 
@@ -178,6 +207,22 @@ export const DistributorProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
   const updateProduct = (updated: Product) => {
     setProducts((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
+  };
+
+  const deleteProduct = (productId: string) => {
+    setProducts((prev) => prev.filter((p) => p.id !== productId));
+  };
+
+  const clearProductStock = (productId: string) => {
+    setProducts((prev) =>
+      prev.map((p) => (p.id === productId ? { ...p, stockOnHand: 0 } : p))
+    );
+  };
+
+  const clearAllStock = () => {
+    setProducts((prev) =>
+      prev.map((p) => ({ ...p, stockOnHand: 0 }))
+    );
   };
 
   const replenishInventory = (
@@ -220,6 +265,59 @@ export const DistributorProvider: React.FC<{ children: React.ReactNode }> = ({ c
     );
   };
 
+  const unloadInventory = (
+    itemsToUnload: { productId: string; quantity: number }[],
+    destinationOrReason: string,
+    invoiceOrNote?: string
+  ) => {
+    const validItems: UnloadItem[] = [];
+    let totalUnits = 0;
+    let totalValuation = 0;
+
+    // Deduct stockOnHand for each item
+    setProducts((prev) =>
+      prev.map((p) => {
+        const toUnload = itemsToUnload.find((item) => item.productId === p.id);
+        if (!toUnload || toUnload.quantity <= 0) return p;
+
+        const actualQtyToUnload = Math.min(p.stockOnHand, toUnload.quantity);
+        if (actualQtyToUnload > 0) {
+          validItems.push({
+            productId: p.id,
+            productName: p.name,
+            unit: p.unit,
+            unitPackSize: p.unitPackSize,
+            quantity: actualQtyToUnload,
+            buyingPrice: p.buyingPrice,
+            totalValuation: actualQtyToUnload * p.buyingPrice,
+          });
+          totalUnits += actualQtyToUnload;
+          totalValuation += actualQtyToUnload * p.buyingPrice;
+        }
+
+        return {
+          ...p,
+          stockOnHand: Math.max(0, p.stockOnHand - toUnload.quantity),
+        };
+      })
+    );
+
+    if (validItems.length > 0) {
+      const newRecord: UnloadRecord = {
+        id: `unload-${Date.now()}`,
+        date: selectedDate,
+        time: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false }),
+        items: validItems,
+        totalUnits,
+        totalValuation,
+        destinationOrReason: destinationOrReason || 'Factory Depot Return',
+        invoiceOrNote,
+      };
+
+      setUnloadRecords((prev) => [newRecord, ...prev]);
+    }
+  };
+
   const onboardCustomer = (custData: Omit<Customer, 'id' | 'totalOrdersCount' | 'totalSpent' | 'createdAt'>) => {
     const newId = `cust-${Date.now()}`;
     const newCustomer: Customer = {
@@ -235,6 +333,10 @@ export const DistributorProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
   const updateCustomer = (updated: Customer) => {
     setCustomers((prev) => prev.map((c) => (c.id === updated.id ? updated : c)));
+  };
+
+  const deleteCustomer = (customerId: string) => {
+    setCustomers((prev) => prev.filter((c) => c.id !== customerId));
   };
 
   const collectCustomerCredit = (customerId: string, amount: number, paymentMethod: PaymentMethod) => {
@@ -385,6 +487,7 @@ export const DistributorProvider: React.FC<{ children: React.ReactNode }> = ({ c
     localStorage.removeItem(STORAGE_KEYS.CUSTOMERS);
     localStorage.removeItem(STORAGE_KEYS.ORDERS);
     localStorage.removeItem(STORAGE_KEYS.REPLENISHMENTS);
+    localStorage.removeItem(STORAGE_KEYS.UNLOADS);
     localStorage.removeItem(STORAGE_KEYS.RECONCILIATIONS);
     localStorage.removeItem(STORAGE_KEYS.TARGET);
 
@@ -393,6 +496,7 @@ export const DistributorProvider: React.FC<{ children: React.ReactNode }> = ({ c
     setCustomers(INITIAL_CUSTOMERS);
     setOrders(seed.orders);
     setReplenishments(seed.replenishments);
+    setUnloadRecords([]);
     setDailyReconciliations({});
     setMonthlyTarget(INITIAL_MONTHLY_TARGET);
   };
@@ -404,6 +508,7 @@ export const DistributorProvider: React.FC<{ children: React.ReactNode }> = ({ c
         customers,
         orders,
         replenishments,
+        unloadRecords,
         dailyReconciliations,
         monthlyTarget,
         selectedDate,
@@ -412,9 +517,14 @@ export const DistributorProvider: React.FC<{ children: React.ReactNode }> = ({ c
         setCurrencySymbol,
         addProduct,
         updateProduct,
+        deleteProduct,
+        clearProductStock,
+        clearAllStock,
         replenishInventory,
+        unloadInventory,
         onboardCustomer,
         updateCustomer,
+        deleteCustomer,
         collectCustomerCredit,
         createOrder,
         reconcileDay,

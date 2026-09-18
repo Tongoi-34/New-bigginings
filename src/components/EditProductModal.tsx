@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useDistributor } from '../context/DistributorContext';
 import { Product, ProductUnit } from '../types';
 import { formatCurrency } from '../utils/analytics';
-import { X, Tag, Percent, DollarSign, Package, AlertCircle } from 'lucide-react';
+import { X, Tag, Percent, DollarSign, Package, AlertCircle, Trash2, Eraser } from 'lucide-react';
 
 interface EditProductModalProps {
   isOpen: boolean;
@@ -15,7 +15,7 @@ export const EditProductModal: React.FC<EditProductModalProps> = ({
   onClose,
   product,
 }) => {
-  const { addProduct, updateProduct, currencySymbol } = useDistributor();
+  const { addProduct, updateProduct, deleteProduct, clearProductStock, currencySymbol } = useDistributor();
 
   const [name, setName] = useState(product?.name || '');
   const [category, setCategory] = useState(product?.category || 'Edible Oils');
@@ -26,6 +26,7 @@ export const EditProductModal: React.FC<EditProductModalProps> = ({
   const [stockOnHand, setStockOnHand] = useState(product ? String(product.stockOnHand) : '20');
   const [minStockAlert, setMinStockAlert] = useState(product ? String(product.minStockAlert) : '10');
   const [errorMsg, setErrorMsg] = useState('');
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   if (!isOpen) return null;
 
@@ -239,10 +240,22 @@ export const EditProductModal: React.FC<EditProductModalProps> = ({
           <div className="grid grid-cols-2 gap-3">
             {/* Stock on hand */}
             <div>
-              <label className="block text-xs font-semibold uppercase tracking-wider text-neutral-400 mb-1.5 flex items-center gap-1">
-                <Package className="w-3 h-3 text-amber-400" />
-                Current Van Stock
-              </label>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="text-xs font-semibold uppercase tracking-wider text-neutral-400 flex items-center gap-1">
+                  <Package className="w-3 h-3 text-amber-400" />
+                  Van Stock
+                </label>
+                {parseInt(stockOnHand, 10) > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setStockOnHand('0')}
+                    className="text-[11px] text-amber-400 hover:text-amber-300 font-semibold underline flex items-center gap-1 cursor-pointer"
+                  >
+                    <Eraser className="w-3 h-3" />
+                    <span>Clear to 0</span>
+                  </button>
+                )}
+              </div>
               <input
                 type="number"
                 min="0"
@@ -267,13 +280,67 @@ export const EditProductModal: React.FC<EditProductModalProps> = ({
             </div>
           </div>
 
-          <div className="pt-2">
+          <div className="pt-2 space-y-2">
             <button
               type="submit"
               className="w-full py-3 px-4 bg-amber-500 hover:bg-amber-400 text-neutral-950 font-bold rounded-xl flex items-center justify-center gap-2 transition-all active:scale-[0.99] cursor-pointer"
             >
               <span>{product ? 'Save Pricing & Updates' : 'Add to Catalog'}</span>
             </button>
+
+            {product && (
+              <div className="pt-2 border-t border-neutral-800/80">
+                {showDeleteConfirm ? (
+                  <div className="p-3 bg-rose-950/40 border border-rose-800/60 rounded-xl space-y-2">
+                    <p className="text-xs text-rose-300 font-medium">
+                      Remove <strong>{product.name}</strong> from catalog? All historical sales will be preserved, but this SKU will no longer appear for new field orders.
+                    </p>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          deleteProduct(product.id);
+                          onClose();
+                        }}
+                        className="flex-1 py-1.5 bg-rose-600 hover:bg-rose-500 text-white rounded-lg text-xs font-bold transition-colors cursor-pointer"
+                      >
+                        Yes, Delete SKU
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setShowDeleteConfirm(false)}
+                        className="px-3 py-1.5 bg-neutral-800 hover:bg-neutral-700 text-neutral-300 rounded-lg text-xs font-semibold transition-colors cursor-pointer"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-between text-xs pt-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        clearProductStock(product.id);
+                        setStockOnHand('0');
+                      }}
+                      className="text-neutral-400 hover:text-amber-400 text-xs font-medium flex items-center gap-1.5 py-1 px-2 rounded-lg hover:bg-neutral-800 transition-colors cursor-pointer"
+                    >
+                      <Eraser className="w-3.5 h-3.5" />
+                      <span>Clear Van Stock to 0</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setShowDeleteConfirm(true)}
+                      className="text-neutral-500 hover:text-rose-400 text-xs font-medium flex items-center gap-1.5 py-1 px-2 rounded-lg hover:bg-rose-950/30 transition-colors cursor-pointer"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>Delete SKU</span>
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </form>
       </div>
